@@ -1,29 +1,17 @@
-int notePins[] = {2,3,4,5,6,7,8,9};
-int tones[] = {1915,1700,1519,1432,1275,1136,1014,956};
-int recordedNotes[100] = {};
-int recordedDurations[100] = {};
-//int arraySize = 1;
-int count = 0;
-int piezoPin = 10;
-int playbackPin = 11;
-int recordPin = 12;
-boolean inRecord = false;
-boolean inPlayback = false;
-int lastButtonStates[] = {LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW};
-int buttonStates[] = {LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW,LOW};
-unsigned long lastDebounceTimes[] = {0,0,0,0,0,0,0,0,0,0,0,0,0};
-unsigned long debounceDelay = 100;
-int lastEvent = 0;
-
-/*
-void playNote (int pitch,int duration);
-int playNoteFromInput (int i);
-void record();
-void playback();
-*/
+int notePins[] = {2,3,4,5,6,7,8,9}; //pins used to play notes
+int tones[] = {1915,1700,1519,1432,1275,1136,1014,956}; //tones of each note
+int recordedNotes[100] = {}; //array with recorded tones
+int recordedDurations[100] = {}; //array with recorded durations
+int count = 0; //number of recorded notes
+int piezoPin = 10; //pin for piezo
+int playbackPin = 11; //button for playback
+int recordPin = 12; //button for record
+boolean inRecord = false; //is the program in record mode
+boolean inPlayback = false; //is the program in playback mode
+int lastEvent = 0; //time of previous note played
 
 void setup () {
-        Serial.begin(9600); 
+	//initialize all pins
 	for (int i = 0; i<8; i++) {
 		pinMode(notePins[i],INPUT);
 	}
@@ -32,123 +20,102 @@ void setup () {
 	pinMode(recordPin,INPUT_PULLUP);
 }
 
-int debounce (int pin) {
-  return digitalRead(pin);
-}
-
-/*
-int debounce (int pin) {
-	int value = digitalRead(pin);
-	if (value != lastButtonStates[pin]) {
-		lastDebounceTimes[pin] = millis();
-	}
-	if ((millis()-lastDebounceTimes[pin])>debounceDelay) {
-		if (value!=lastButtonStates[pin]) {
-			lastButtonStates[pin] = value;
-		}
-		if (lastButtonStates[pin] == HIGH) {
-			return HIGH;
-		}
-	}
-	return LOW;
-}
-*/
+//play note during playback
 void playNote (int pitch, int duration) {
-        Serial.print(pitch);
-                                Serial.print(" ");
-                                Serial.print(duration);
-                                Serial.print("\n");
-        if (pitch==-1) {
-                delay(duration);
-                return;
-        }
+	//during a rest, play nothing
+    if (pitch==-1) {
+        delay(duration);
+        return;
+    }
+    //turn on led for duration of note
 	pinMode(notePins[pitch],OUTPUT);
-	digitalWrite(notePins[pitch],HIGH);
-        int note = tones[pitch];
+	digitalWrite(notePins[pitch],HIGH); 
+    int note = tones[pitch];
+    //play given note on piezo
 	for (long i = 0; i<duration*1000L; i+=note*2) {
 		digitalWrite(piezoPin,HIGH);
 		delayMicroseconds(note);
 		digitalWrite(piezoPin,LOW);
 		delayMicroseconds(note);
-		if (debounce(playbackPin)==LOW) {
+		//exit note playing when playback button is pressed again
+		if (digitalRead(playbackPin)==LOW) {
 			inPlayback = false;
+			//turn off led
 			digitalWrite(notePins[pitch],LOW);
 			pinMode(notePins[pitch],INPUT);
 			return;
 		}
 	}
+	//turn off led
 	digitalWrite(notePins[pitch],LOW);
 	pinMode(notePins[pitch],INPUT);
 }
 
+//play note in real time from user input
 void playNoteFromInput (int i) {
-	int duration = 0;
+	//turn on led for duration of note
 	pinMode(notePins[i],OUTPUT);
 	digitalWrite(notePins[i],HIGH);
-        pinMode(notePins[i],INPUT);
-        //while (true) {
-	while (debounce(notePins[i]) == HIGH) {
-                //Serial.print(tones[i]);
+    pinMode(notePins[i],INPUT);
+    //continue to play note as long as button is pressed
+	while (digitalRead(notePins[i]) == HIGH) {
 		int pitch = tones[i];
 		digitalWrite(piezoPin,HIGH);
 		delayMicroseconds(pitch);
 		digitalWrite(piezoPin,LOW);
 		delayMicroseconds(pitch);
-		//duration+=2*pitch;
 	}
-        pinMode(notePins[i],OUTPUT);
+	//turn off led
+    pinMode(notePins[i],OUTPUT);
 	digitalWrite(notePins[i],LOW);
-        pinMode(notePins[i],INPUT);
-	//return duration;
+    pinMode(notePins[i],INPUT);
 }
 
+//record user input
 void record () {
-	//arraySize = 1;
 	count = 0;
-        //int recordedNotes[100];
-        //int recordedDurations[100];
-	//recordedNotes = int[1];
-	//recordedDurations = int[1];
-        while (debounce(recordPin)==LOW) {
-          Serial.print("limbo\n");
-        }
-        lastEvent = millis();
-        //        Serial.print(lastEvent);
+	//dummy loop to prevent holding button issue
+    while (digitalRead(recordPin)==LOW) {
+    }
+    lastEvent = millis(); //keep track of start of first note or rest
 	while (inRecord) {
-		int duration = -1;
-		int i;
-		for (i = 0; i<8; i++) {
-			int value = debounce(notePins[i]);
+		//loop through each button to test for input
+		for (int i = 0; i<8; i++) {
+			int value = digitalRead(notePins[i]);
+			//if button is pressed
 			if (value == HIGH) {
-                                //Serial.print(millis());
-                                //Serial.print(lastEvent);
-                                int duration = millis()-lastEvent;
-                                recordedNotes[count] = -1;
-                                recordedDurations[count] = duration;
-                                //Serial.print(duration);
-                                //Serial.print("\n");
-                                count++;
-                                lastEvent = millis();
+				//end previous rest period and input into array
+                int duration = millis()-lastEvent;
+                recordedNotes[count] = -1;
+                recordedDurations[count] = duration;
+                count++;
+                lastEvent = millis();
+                //play note inputted by user
 				playNoteFromInput(i);
-                                duration = millis()-lastEvent;
-                                lastEvent = millis();
-    		        	recordedNotes[count] = i;
-    	        		recordedDurations[count] = duration;
-    		        	count++;
+				//end previous note and input into array
+                duration = millis()-lastEvent;
+                lastEvent = millis();
+    		    recordedNotes[count] = i;
+    	        recordedDurations[count] = duration;
+    		    count++;
 			}			
 		}
-		if (debounce(recordPin)==LOW) {
+		//exit record mode if record button is pressed again
+		if (digitalRead(recordPin)==LOW) {
 			inRecord = false;
 		}
 	}
 }
 
+//play back stored notes
 void playback () {
-        while (debounce(playbackPin)==LOW) {
-                Serial.print("limbo\n");
-        }
+	//dummy loop to prevent button holding issue
+    while (digitalRead(playbackPin)==LOW) {
+    }
 	for (int i = 0; i<count; i++) {
+		//play stored note
 		playNote (recordedNotes[i],recordedDurations[i]);
+		//exit playback mode if playback button is pressed again
 		if (!inPlayback) {
 			return;
 		}
@@ -156,30 +123,31 @@ void playback () {
 }
 
 void loop () {
-        //Serial.print(debounce(recordPin));
+	//loop through each button to test for input
 	for (int i = 0; i<8; i++) {
-		int value = debounce(notePins[i]);
+		int value = digitalRead(notePins[i]);
+		//if button is pressed
 		if (value == HIGH) {
+			//play note inputted by user
 			playNoteFromInput(i);
 		}			
 	}
-	int value = debounce(recordPin);
+	int value = digitalRead(recordPin);
+	//if record button is pressed enter record mode
 	if (value == LOW) {
-                Serial.print("recording\n");
 		inRecord = true;
 		record();
-                while (debounce(recordPin)==LOW) {
-                        Serial.print("end limbo\n");
-                }
+		//dummy loop to prevent button holding issue
+        while (digitalRead(recordPin)==LOW) {
+        }
 	}
-	value = debounce(playbackPin);
+	value = digitalRead(playbackPin);
+	//if playback button is pressed enter playback mode
 	if (value == LOW) {
-                Serial.print("playing\n");
 		inPlayback = true;
 		playback();
-                Serial.print("end check\n");
-                while (debounce(playbackPin)==LOW) {
-                        Serial.print("end limbo\n");
-                }
+		//dummy loop to prevent button holding issue
+        while (digitalRead(playbackPin)==LOW) {
+        }
 	}
 }
